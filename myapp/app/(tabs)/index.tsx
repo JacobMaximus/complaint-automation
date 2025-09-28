@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Audio } from 'expo-av'; // Reverted to expo-av to avoid errors for now
+import { Audio } from 'expo-av';
 import * as DocumentPicker from 'expo-document-picker';
 import React, { useEffect, useState } from 'react';
 import {
@@ -19,7 +19,7 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import 'react-native-url-polyfill/auto';
 
-// --- Supabase Client Setup ---
+
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 
@@ -132,9 +132,6 @@ export default function App() {
     setAppState('home')
   }
 
-  /**
-   * **UPDATED:** This is now the REAL upload and processing logic.
-   */
   const handleProcessUpload = async () => {
     if (selectedFiles.length === 0 || !incidentDate) {
       Alert.alert('Missing Information', 'Please add files and set the incident time.')
@@ -143,22 +140,19 @@ export default function App() {
     setIsProcessing(true);
 
     try {
-      // Step A: Create a ticket in the database
-      setProcessingStatus('Creating incident ticket...');
-      const { data: ticketData, error: ticketError } = await supabase
-        .from('tickets')
-        .insert([{ incident_time: incidentDate.toISOString() }])
-        .select()
-        .single(); 
+      
+      console.log('--- Starting Incident Upload ---');
+      console.log('Incident Start Time:', incidentDate.toISOString());
+      console.log('Call Order:');
+      selectedFiles.forEach((file, index) => {
+        console.log(`${index + 1}. ${file.asset.name} (${file.role})`);
+      });
+      console.log('------------------------------------');
 
-      if (ticketError || !ticketData) {
-        throw new Error(ticketError?.message || 'Failed to create ticket.');
-      }
+      // Create a unique folder for this batch of uploads using a timestamp
+      const batchFolder = Date.now().toString();
 
-      const ticketId = ticketData.id;
-      console.log(`Successfully created ticket #${ticketId}`);
-
-      // Step B: Upload all files into a folder named after the ticket ID
+      // --- UPLOAD STEP ---
       const uploadPromises = selectedFiles.map(async (appFile, index) => {
         setProcessingStatus(`Uploading file ${index + 1} of ${selectedFiles.length}...`);
         const { asset, role } = appFile;
@@ -170,15 +164,13 @@ export default function App() {
           type: asset.mimeType || 'application/octet-stream',
         } as any);
 
-        const filePath = `${ticketId}/${index + 1}_${role}_${asset.name}`;
+        const filePath = `${batchFolder}/${index + 1}_${role}_${asset.name}`;
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('call-recordings')
           .upload(filePath, formData);
 
         if (uploadError) {
-          // Important: try to delete the ticket if a file fails to upload
-          await supabase.from('tickets').delete().eq('id', ticketId);
           throw new Error(`Failed to upload ${asset.name}: ${uploadError.message}`);
         }
         
@@ -190,9 +182,9 @@ export default function App() {
 
       Alert.alert(
         'Upload Successful',
-        `Incident #${ticketId} with ${selectedFiles.length} files has been uploaded.`
+        `Batch ${batchFolder} with ${selectedFiles.length} files has been uploaded.`
       );
-      handleClearAll(); // Reset the app state after success
+      handleClearAll();
 
     } catch (error: any) {
       console.error('An error occurred during processing:', error);

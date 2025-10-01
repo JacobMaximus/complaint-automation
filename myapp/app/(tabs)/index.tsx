@@ -34,8 +34,12 @@ const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '')
 type FileRole = 'Customer' | 'Manager'
 type AppState = 'home' | 'ticket'
 
+type ExtendedAsset = DocumentPicker.DocumentPickerAsset & {
+  modificationTime?: number;
+};
+
 type AppFile = {
-  asset: DocumentPicker.DocumentPickerAsset
+  asset: ExtendedAsset
   role: FileRole
 }
 
@@ -84,15 +88,37 @@ export default function App() {
     return sound ? () => { sound.unloadAsync(); } : undefined;
   }, [sound]);
 
-
   const pickDocuments = async (isInitial: boolean = false) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: 'audio/*', multiple: true })
       if (!result.canceled) {
-        const newFiles: AppFile[] = result.assets.map((asset) => ({ asset: asset, role: 'Customer' }))
+        const newFiles: AppFile[] = result.assets.map((asset) => ({
+          asset: asset as ExtendedAsset,
+          role: 'Customer'
+        }))
         setSelectedFiles((currentFiles) => {
           const allFiles = [...currentFiles, ...newFiles]
           const uniqueFiles = Array.from(new Map(allFiles.map((file) => [file.asset.uri, file])).values())
+
+        
+
+          // ✅ Log modificationTime safely
+          uniqueFiles.forEach((file) => {
+            const fileAsset = result.assets?.[0];
+            const { name: fileName, lastModified } = fileAsset;
+            if (lastModified) {
+              const modDate = new Date(lastModified);
+              const message = `File: ${fileName}\nLast Modified: ${modDate.toLocaleString()}`;
+        
+
+              console.log(
+                `File: ${file.asset.name}, modificationTime: ${lastModified}`
+              )
+            } else {
+              console.log(`File: ${file.asset.name}, modificationTime: N/A`)
+            }
+          })
+
           return uniqueFiles
         })
         if (isInitial) {
@@ -149,10 +175,8 @@ export default function App() {
       });
       console.log('------------------------------------');
 
-      // Create a unique folder for this batch of uploads using a timestamp
       const batchFolder = Date.now().toString();
 
-      // --- UPLOAD STEP ---
       const uploadPromises = selectedFiles.map(async (appFile, index) => {
         setProcessingStatus(`Uploading file ${index + 1} of ${selectedFiles.length}...`);
         const { asset, role } = appFile;
@@ -208,13 +232,14 @@ export default function App() {
           <Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">{item.asset.name}</Text>
           <Text style={styles.fileMetadata}>{item.asset.size ? `${(item.asset.size / 1024 / 1024).toFixed(2)} MB` : 'Size N/A'}</Text>
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.playButton} onPress={() => handlePlayback(item)}>
-              <Text style={styles.playButtonText}>{isPlaying ? '■' : '▶'}</Text>
-            </TouchableOpacity>
+            
             <View style={styles.roleSelectorContainer}>
               <TouchableOpacity style={[styles.roleButton, item.role === 'Customer' && styles.roleButtonSelected]} onPress={() => handleRoleChange(item.asset.uri, 'Customer')}><Text style={[styles.roleButtonText, item.role === 'Customer' && styles.roleButtonTextSelected]}>Customer</Text></TouchableOpacity>
               <TouchableOpacity style={[styles.roleButton, item.role === 'Manager' && styles.roleButtonSelected]} onPress={() => handleRoleChange(item.asset.uri, 'Manager')}><Text style={[styles.roleButtonText, item.role === 'Manager' && styles.roleButtonTextSelected]}>Manager</Text></TouchableOpacity>
             </View>
+            <TouchableOpacity style={styles.playButton} onPress={() => handlePlayback(item)}>
+              <Text style={styles.playButtonText}>{isPlaying ? '■' : '▶'}</Text>
+            </TouchableOpacity>
           </View>
         </View>
         <TouchableOpacity onPress={() => handleRemoveFile(item.asset.uri)} style={styles.removeButton} disabled={isProcessing}>
@@ -312,4 +337,3 @@ const styles = StyleSheet.create({
   disabledButton: { backgroundColor: '#a5d6a7', },
   processingStatusText: { color: '#ffffff', fontSize: 14, },
 })
-

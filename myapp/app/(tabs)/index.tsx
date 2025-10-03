@@ -47,7 +47,6 @@ export default function App() {
   const [selectedFiles, setSelectedFiles] = useState<AppFile[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingStatus, setProcessingStatus] = useState('')
-  // The incidentDate state is no longer needed
 
   const [sound, setSound] = useState<Audio.Sound | null>(null)
   const [currentlyPlayingUri, setCurrentlyPlayingUri] = useState<string | null>(null)
@@ -154,19 +153,16 @@ export default function App() {
       return
     }
     
-    // **AUTOMATIC INCIDENT TIME**
-    // The incident time is now derived from the first file in the sorted list.
     const firstFileTimestamp = selectedFiles[0].asset.lastModified;
     const incidentDate = typeof firstFileTimestamp === 'number'
       ? new Date(firstFileTimestamp)
-      : new Date(); // Fallback to current time if the first file has no timestamp
+      : new Date();
 
     setIsProcessing(true);
 
     try {
       
       console.log('--- Starting Incident Upload ---');
-      // **LOGGING THE AUTOMATIC TIME**
       console.log('Incident Start Time (from earliest file):', incidentDate.toISOString());
       console.log('Call Order:');
       selectedFiles.forEach((file, index) => {
@@ -175,6 +171,25 @@ export default function App() {
       console.log('------------------------------------');
 
       const batchFolder = Date.now().toString();
+
+      // Create the JSON metadata object with the new array format.
+      // The `selectedFiles` state is already sorted by date from the `pickDocuments` function.
+      const filesArray = selectedFiles.map((appFile) => {
+        const sanitizedName = appFile.asset.name.replace(/ /g, '_').replace(/[^\w.-]/g, '');
+        // We still create the unique file name to match the file uploaded to storage
+        const fileNameWithRole = `${appFile.role}_${sanitizedName}`;
+        
+        return {
+          fileName: fileNameWithRole,
+          role: appFile.role,
+          dateUNIX: Math.floor((appFile.asset.lastModified || Date.now()) / 1000),
+        };
+      });
+
+      const incidentMetadata = {
+        incidentTime: Math.floor((firstFileTimestamp || Date.now()) / 1000),
+        files: filesArray,
+      };
 
       const uploadPromises = selectedFiles.map(async (appFile, index) => {
         setProcessingStatus(`Uploading file ${index + 1} of ${selectedFiles.length}...`);
@@ -187,7 +202,9 @@ export default function App() {
           type: asset.mimeType || 'application/octet-stream',
         } as any);
 
-        const filePath = `${batchFolder}/${index + 1}_${role}_${asset.name}`;
+        // CHANGED: Use the same sanitization logic for the file path.
+        const sanitizedName = asset.name.replace(/ /g, '_').replace(/[^\w.-]/g, '');
+        const filePath = `${batchFolder}/${role}_${sanitizedName}`;
 
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('call-recordings')
@@ -203,9 +220,26 @@ export default function App() {
 
       await Promise.all(uploadPromises);
 
+      // Upload the generated JSON file
+      setProcessingStatus(`Uploading incident details...`);
+      const metadataJsonString = JSON.stringify(incidentMetadata, null, 2);
+      const jsonFilePath = `${batchFolder}/incident_details.json`;
+
+      const { error: jsonUploadError } = await supabase.storage
+        .from('call-recordings')
+        .upload(jsonFilePath, metadataJsonString, {
+          contentType: 'application/json',
+          upsert: false
+        });
+
+      if (jsonUploadError) {
+        throw new Error(`Failed to upload incident JSON: ${jsonUploadError.message}`);
+      }
+      console.log(`Successfully uploaded ${jsonFilePath}`);
+
       Alert.alert(
         'Upload Successful',
-        `Batch ${batchFolder} with ${selectedFiles.length} files has been uploaded.`
+        `Batch ${batchFolder} with ${selectedFiles.length} files and details has been uploaded.`
       );
       handleClearAll();
 
@@ -342,7 +376,6 @@ const styles = StyleSheet.create({
   roleButtonText: { color: '#007AFF', fontSize: 12, fontWeight: '600', },
   roleButtonTextSelected: { color: '#FFFFFF', },
   bottomControls: { paddingHorizontal: 20, paddingBottom: 10, paddingTop: 5, borderTopWidth: 1, borderTopColor: '#eee', backgroundColor: '#f4f4f8' },
-  // New styles for the automatic time display
   incidentTimeContainer: { width: '100%', backgroundColor: '#ffffff', padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: '#ddd' },
   incidentTimeLabel: { fontSize: 12, color: '#888', marginBottom: 4 },
   incidentTimeText: { color: '#007AFF', fontSize: 16, fontWeight: '500' },

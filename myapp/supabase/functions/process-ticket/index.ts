@@ -16,53 +16,55 @@ serve(async (req) => {
     // 1. Set ticket status to 'processing'
     await supabase.from('tickets').update({ status: 'processing' }).eq('id', ticket.id)
 
-    // 2. NEW: Fetch ALL recordings for this ticket, ordered by time
+    // 2. Fetch ALL recordings for this ticket
     const { data: recordings, error: fetchError } = await supabase
       .from('recordings')
       .select('*')
       .eq('ticket_id', ticket.id)
-      .order('recording_time', { ascending: true }) // Ensures chronological processing
+      .order('recording_time', { ascending: true })
 
-    if (fetchError) throw new Error(`Could not fetch recordings: ${fetchError.message}`)
+    if (fetchError) throw fetchError
     if (!recordings || recordings.length === 0) throw new Error(`No recordings found for ticket ${ticket.id}`)
 
-    // 3. NEW: Loop through each recording one by one (sequentially)
-    for (const recording of recordings) {
-      console.log(`Processing recording: ${recording.file_name}`);
-
+    // --- PHASE 1: Transcribe all files in parallel ---
+    const transcriptionPromises = recordings.map(async (recording) => {
+      console.log(`Starting transcription for: ${recording.file_name}`);
       const filePath = `${ticket.storage_path}/${recording.file_name}`
-      const { data: audioBlob, error: downloadError } = await supabase.storage.from('call-recordings').download(filePath)
+      const { data: audioBlob } = await supabase.storage.from('call-recordings').download(filePath)
       
-      if (downloadError) {
-        console.error(`Failed to download ${filePath}:`, downloadError.message);
-        continue; // Skip to the next file if this one fails
-      }
-
-      // --- Call Gemini API for Transcription ---
       const audioBytes = await audioBlob.arrayBuffer();
       const base64Audio = encodeBase64(new Uint8Array(audioBytes));
-
-      const audioPart = {
-        inlineData: { data: base64Audio, mimeType: 'audio/opus' },
-      };
+      const audioPart = { inlineData: { data: base64Audio, mimeType: 'audio/opus' } };
       
-      const prompt = "You are an expert audio transcriber. The following audio file contains a conversation between two people in a mix of Tamil and English (Tanglish). Your task is to transcribe it into clean, plain English text. Crucially, identify each distinct speaker and label their dialogue (e.g., 'Person 1:', 'Person 2:'). Provide only the final, labeled transcription."
-      
+      const prompt = "You are an expert audio transcriber. The following audio file contains a conversation between two people in a mix of Tamil and English (Tanglish). Your task is to transcribe it into clean, plain English text. Identify each distinct speaker and label their dialogue (e.g., 'Person 1:', 'Person 2:'). The output must be plain text only, without any markdown formatting like bolding or asterisks."
       const result = await model.generateContent([prompt, audioPart])
       const transcriptionText = result.response.text()
-      console.log(`Transcription received for ${recording.file_name}`)
 
-      // Update the specific recording row with its transcription
-      await supabase
-        .from('recordings')
-        .update({ transcription: transcriptionText })
-        .eq('id', recording.id)
-    }
+      // Update the individual recording row
+      await supabase.from('recordings').update({ transcription: transcriptionText }).eq('id', recording.id)
       
-    // 4. Set ticket status to 'done' after all files are processed
-    await supabase.from('tickets').update({ status: 'done' }).eq('id', ticket.id)
+      console.log(`Finished transcription for: ${recording.file_name}`);
+      // Return the details needed for the final report
+      return { role: recording.role, transcription: transcriptionText };
+    });
 
-    return new Response(JSON.stringify({ message: `Successfully transcribed ${recordings.length} files for ticket ${ticket.id}` }), { status: 200 })
+    const transcribedRecordings = await Promise.all(transcriptionPromises);
+
+    // --- PHASE 2: Consolidate transcriptions into one report ---
+    const combinedTranscript = transcribedRecordings
+      .map((rec, index) => {
+        return `Call ${index + 1}: Role: ${rec.role}\nTranscription:\n${rec.transcription}\n\n`;
+      })
+      .join('') // Join all the strings into one block of text
+      .trim(); // Remove any trailing whitespace
+
+    // --- FINAL STEP: Update the main ticket with the combined report ---
+    await supabase.from('tickets').update({ 
+      transcription: combinedTranscript,
+      status: 'done' 
+    }).eq('id', ticket.id)
+
+    return new Response(JSON.stringify({ message: `Successfully processed ticket ${ticket.id}` }), { status: 200 })
 
   } catch (error) {
     console.error(`Failed to process ticket ${ticket.id}:`, error)

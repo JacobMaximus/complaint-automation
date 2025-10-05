@@ -134,9 +134,16 @@ serve(async (req) => {
 
     const analysisJson = JSON.parse(analysisResult.response.text());
 
-    // Updating ticket status to 'done'
+    // Loop through the JSON object and convert any string "null" to a real null value.
+    Object.keys(analysisJson).forEach(key => {
+        if (analysisJson[key] === "null") {
+            analysisJson[key] = null;
+        }
+    });
+
+    // Update the ticket by spreading the cleaned JSON keys into their respective columns.
     await supabase.from('tickets').update({ 
-      columns_field: analysisJson,
+      ...analysisJson,
       status: 'done' 
     }).eq('id', ticket.id)
 

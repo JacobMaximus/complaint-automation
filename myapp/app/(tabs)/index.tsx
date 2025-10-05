@@ -97,7 +97,7 @@ export default function App() {
           const allFiles = [...currentFiles, ...newFiles]
           const uniqueFiles = Array.from(new Map(allFiles.map((file) => [file.asset.uri, file])).values())
 
-          // **AUTOMATIC SORTING LOGIC**
+          // AUTOMATIC SORTING LOGIC
           uniqueFiles.sort((a, b) => 
             (a.asset.lastModified || 0) - (b.asset.lastModified || 0)
           );
@@ -143,7 +143,6 @@ export default function App() {
     setSound(null);
     setCurrentlyPlayingUri(null);
     setSelectedFiles([])
-    // setIncidentDate(null) // No longer needed
     setAppState('home')
   }
 
@@ -202,7 +201,7 @@ export default function App() {
           type: asset.mimeType || 'application/octet-stream',
         } as any);
 
-        // CHANGED: Use the same sanitization logic for the file path.
+        // sanitization logic for the file path.
         const sanitizedName = asset.name.replace(/ /g, '_').replace(/[^\w.-]/g, '');
         const filePath = `${batchFolder}/${role}_${sanitizedName}`;
 
@@ -295,7 +294,7 @@ export default function App() {
   );
 
   const renderTicketView = () => {
-    // **AUTOMATIC INCIDENT TIME DISPLAY**
+    // AUTOMATIC INCIDENT TIME DISPLAY
     const firstFileTimestamp = selectedFiles.length > 0 ? selectedFiles[0].asset.lastModified : undefined;
     const incidentTime = typeof firstFileTimestamp === 'number'
       ? new Date(firstFileTimestamp).toLocaleString("en-IN")
@@ -320,7 +319,6 @@ export default function App() {
           />
         </View>
         <View style={styles.bottomControls}>
-          {/* **NEW UI ELEMENT to display the time** */}
           <View style={styles.incidentTimeContainer}>
             <Text style={styles.incidentTimeLabel}>Incident Start Time (Automatic):</Text>
             <Text style={styles.incidentTimeText}>{incidentTime}</Text>

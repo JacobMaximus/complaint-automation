@@ -1,5 +1,3 @@
-// supabase/functions/process-ticket/index.ts
-
 import { encodeBase64 } from "https://deno.land/std/encoding/base64.ts";
 import { serve } from 'https://deno.land/std/http/server.ts';
 import { GoogleGenerativeAI } from 'https://esm.sh/@google/generative-ai';
@@ -8,7 +6,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const genAI = new GoogleGenerativeAI(Deno.env.get('GEMINI_API_KEY')!)
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
-// Define the JSON Response Schema for the final analysis step
+// JSON Response Schema for the final analysis step
 const analysisSchema = {
   type: "object",
   properties: {
@@ -70,7 +68,7 @@ serve(async (req) => {
     if (fetchError) throw fetchError;
     if (!recordings || recordings.length === 0) throw new Error(`No recordings found for ticket ${ticket.id}`);
 
-    // --- PHASE 1: Transcribe all files in parallel ---
+    // Transcribe all files in parallel
     const transcriptionPromises = recordings.map(async (recording) => {
       const filePath = `${ticket.storage_path}/${recording.file_name}`
       const { data: audioBlob } = await supabase.storage.from('call-recordings').download(filePath)
@@ -90,7 +88,7 @@ serve(async (req) => {
 
     const transcribedRecordings = await Promise.all(transcriptionPromises);
 
-    // --- PHASE 2: Consolidate transcriptions and update the ticket ---
+    // Consolidate transcriptions and update the ticket
     const combinedTranscript = transcribedRecordings
       .map((rec, index) => `Call ${index + 1}: Role: ${rec.role}\nTranscription:\n${rec.transcription}\n\n`)
       .join('')
@@ -100,7 +98,7 @@ serve(async (req) => {
       transcription: combinedTranscript
     }).eq('id', ticket.id)
 
-    // --- PHASE 3: Analyze the combined transcript to get structured JSON ---
+    // Analyze the combined transcript to get structured JSON 
     const analysisPrompt = `
       You are an expert AI assistant for a restaurant's customer support analysis.
       Analyze the following transcript of a customer incident. Based ONLY on this text, extract the required information.
@@ -129,7 +127,7 @@ serve(async (req) => {
 
     const analysisJson = JSON.parse(analysisResult.response.text());
 
-    // --- FINAL STEP: Update the ticket with the JSON and set status to 'done' ---
+    // Updating ticket status to 'done'
     await supabase.from('tickets').update({ 
       columns_field: analysisJson,
       status: 'done' 

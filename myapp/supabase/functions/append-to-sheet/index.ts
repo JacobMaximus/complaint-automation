@@ -1,5 +1,3 @@
-// supabase/functions/append-to-sheet/index.ts
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 // Import the Deno JWT library for creating the token
 import { create, getNumericDate } from 'https://deno.land/x/djwt@v3.0.2/mod.ts';
@@ -8,7 +6,7 @@ const GOOGLE_TOKEN_URI = 'https://oauth2.googleapis.com/token';
 const SPREADSHEET_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 
 serve(async (req) => {
-  // CORS preflight request handling (no changes here)
+  // CORS preflight request handling 
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
@@ -19,7 +17,7 @@ serve(async (req) => {
   }
 
   try {
-    // 1. Get Secrets and Request Body
+    // Get Secrets and Request Body
     const serviceAccountJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
     const spreadsheetId = Deno.env.get('SPREADSHEET_ID');
     if (!serviceAccountJson || !spreadsheetId) {
@@ -31,8 +29,7 @@ serve(async (req) => {
       throw new Error('fileName is required in the request body');
     }
 
-    // 2. Import the private key to create a CryptoKey for signing
-    // This is the step you suggested!
+    // Import the private key to create a CryptoKey for signing
     const privateKey = await crypto.subtle.importKey(
       'pkcs8',
       Uint8Array.from(atob(
@@ -46,7 +43,7 @@ serve(async (req) => {
       ['sign']
     );
 
-    // 3. Create a JWT Assertion
+    // Create a JWT Assertion
     const jwt = await create(
       { alg: 'RS256', typ: 'JWT' },
       {
@@ -59,7 +56,7 @@ serve(async (req) => {
       privateKey
     );
 
-    // 4. Exchange the JWT for a Google API Access Token
+    // Exchange the JWT for a Google API Access Token
     const tokenResponse = await fetch(GOOGLE_TOKEN_URI, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -75,7 +72,7 @@ serve(async (req) => {
     }
     const { access_token } = await tokenResponse.json();
 
-    // 5. Use the Access Token to call the Google Sheets API
+    // Use the Access Token to call the Google Sheets API
     const now = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
     const valuesToAppend = { values: [[now, fileName]] };
 
@@ -97,7 +94,7 @@ serve(async (req) => {
 
     const responseData = await sheetsResponse.json();
 
-    // 6. Send success response
+    // end success response
     return new Response(JSON.stringify({ success: true, data: responseData }), {
       headers: { 
         'Content-Type': 'application/json',

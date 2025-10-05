@@ -118,7 +118,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Button, Platform, StyleSheet, Text, View } from 'react-native';
 import 'react-native-url-polyfill/auto'; // Good practice to keep for Supabase
 
-// --- CORRECTED: Load credentials from environment variables ---
+// Load credentials from environment variables ---
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -139,9 +139,7 @@ export default function App() {
   const [fileInfoMessage, setFileInfoMessage] = useState<string>('Pick a file to see its info.');
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  /**
-   * Appends the given file name to Google Sheets via a Supabase Edge Function.
-   */
+  // Appends the given file name to Google Sheets via a Supabase Edge Function.
   const appendFileNameToSheet = async (fileName: string) => {
     setIsLoading(true);
     setFileInfoMessage(`Adding '${fileName}' to Google Sheets...`);
@@ -167,9 +165,7 @@ export default function App() {
     }
   };
 
-  /**
-   * Handles the file picking process and then calls the function to update the sheet.
-   */
+  // Handles the file picking process and then calls the function to update the sheet.
   const pickAndAnalyzeFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({

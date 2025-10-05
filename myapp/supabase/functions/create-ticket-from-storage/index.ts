@@ -1,5 +1,3 @@
-// supabase/functions/create-ticket-from-storage/index.ts
-
 import { serve } from 'https://deno.land/std/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -17,7 +15,7 @@ serve(async (req) => {
       const incidentDetails = JSON.parse(await jsonData.text())
       const incidentTime = new Date(incidentDetails.incidentTime * 1000).toISOString()
 
-      // 1. Create the main ticket entry
+      // Create the main ticket entry
       const { data: ticketData, error: ticketError } = await supabase
         .from('tickets')
         .insert({
@@ -26,12 +24,12 @@ serve(async (req) => {
           status: 'pending'
         })
         .select('id')
-        .single() // Important: .single() returns the created object
+        .single() // .single() returns the created object
 
       if (ticketError) throw ticketError
       const ticketId = ticketData.id
 
-      // 2. NEW: Create a recording entry for each file in the JSON
+      // Create a recording entry for each file in the JSON
       if (incidentDetails.files && incidentDetails.files.length > 0) {
         const recordingsToInsert = incidentDetails.files.map((file: any) => ({
           ticket_id: ticketId,

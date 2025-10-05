@@ -94,7 +94,7 @@ serve(async (req) => {
 
     const responseData = await sheetsResponse.json();
 
-    // end success response
+    // Send success response
     return new Response(JSON.stringify({ success: true, data: responseData }), {
       headers: { 
         'Content-Type': 'application/json',

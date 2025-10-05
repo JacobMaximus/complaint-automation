@@ -30,7 +30,10 @@ const analysisSchema = {
     },
     Status_Other: { type: "string", description: "If Status is 'Other', provide a brief 3-word description here. Otherwise, null." },
     Action_Taken: { type: "string" },
-    Customer_Care_Notes: { type: "string" },
+    Customer_Care_Notes: {
+      type: "string",
+      description: "Suggest a brief, actionable step the restaurant could take to prevent this issue in the future (e.g., 'Implement delivery tracking notifications', 'Train staff on menu changes'). This should NOT be a summary of the call. If no preventative action is relevant, this MUST be null."
+    },
     Resolution_Feedback_From_Customer: { type: "string" },
     Order_Type: {
       type: "string",
@@ -105,6 +108,10 @@ serve(async (req) => {
       If a value is not mentioned, return null for that field.
       For the 'Branch' field, if no specific branch is mentioned, default to 'General'.
       For 'Customer_Care_Notes' and 'AI_Summary', generate the content based on your analysis.
+
+       **Specific Field Instructions:**
+      - **AI_Summary:** Provide a concise, neutral summary of the entire interaction.
+      - **Customer_Care_Notes:** Do NOT summarize the call. Instead, suggest one brief, actionable step the restaurant could take to prevent this specific issue from happening again. If no preventative action is logical or possible based on the transcript, the value MUST be \`null\`.
 
       **General Rules:**
       1.  Analyze the content of the transcript ONLY. Do not invent information. DO NOT HALLUCINATE

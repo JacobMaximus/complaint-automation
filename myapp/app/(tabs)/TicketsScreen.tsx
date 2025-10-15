@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import TicketItem from '../components/TicketItem'; // Import the component we just made
+import TicketItem from '../components/TicketItem'; 
 
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -17,50 +17,61 @@ export default function TicketsScreen() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch initial data
-    const fetchInitialTickets = async () => {
-      const { data, error } = await supabase
+    const fetchAndMergeTickets = async () => {
+      const { data: newTickets, error } = await supabase
         .from('tickets')
         .select('*')
-        .order('created_at', { ascending: false }); // Newest first
+        .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching tickets:', error);
-      } else if (data) {
-        setTickets(data);
+        console.error('Error polling for tickets:', error);
+        return; 
       }
-      setIsLoading(false);
-    };
 
-    fetchInitialTickets();
-
-    // Set up real-time subscription
-    const channel = supabase
-      .channel('tickets-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tickets' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            // Add the new ticket to the top of the list
-            setTickets((currentTickets) => [payload.new as Ticket, ...currentTickets]);
-          } else if (payload.eventType === 'UPDATE') {
-            // Find and update the existing ticket in the list
-            setTickets((currentTickets) =>
-              currentTickets.map((ticket) =>
-                ticket.id === payload.new.id ? { ...ticket, ...payload.new } : ticket
-              )
-            );
+      if (newTickets) {
+        setTickets((currentTickets) => {
+          // If this is the first fetch, just set the data and stop loading
+          if (currentTickets.length === 0) {
+            setIsLoading(false);
+            return newTickets;
           }
-        }
-      )
-      .subscribe();
 
-    // Cleanup subscription on component unmount
-    return () => {
-      supabase.removeChannel(channel);
+          // Create a Map of the current tickets for fast lookups
+          const currentTicketsMap = new Map(
+            currentTickets.map((ticket) => [ticket.id, ticket])
+          );
+
+          // Build the next state array.
+          const nextState = newTickets.map((newTicket) => {
+            const existingTicket = currentTicketsMap.get(newTicket.id);
+
+            // If a ticket exists and its status hasn't changed,
+            // return the original object reference. React will see it's
+            // the same object and skip re-rendering that row.
+            if (existingTicket && existingTicket.status === newTicket.status) {
+              return existingTicket;
+            }
+
+            // Otherwise, return the new, updated ticket object.
+            return newTicket;
+          });
+
+          return nextState;
+        });
+      }
     };
-  }, []);
+
+    // Fetch immediately on component mount
+    fetchAndMergeTickets();
+    
+    
+    const intervalId = setInterval(fetchAndMergeTickets, 5000); 
+
+    // Cleanup on unmount
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []); 
 
   if (isLoading) {
     return <ActivityIndicator size="large" style={styles.centered} />;

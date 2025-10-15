@@ -80,23 +80,47 @@ serve(async (req) => {
       const base64Audio = encodeBase64(new Uint8Array(audioBytes));
       const audioPart = { inlineData: { data: base64Audio, mimeType: 'audio/opus' } };
       
-      const transcriptionPrompt = "You are an expert audio transcriber. The following audio file contains a conversation between two people in a mix of Tamil and English (Tanglish). Your task is to transcribe it into clean, plain English text. Crucially, identify each distinct speaker and label their dialogue (e.g., 'Person 1:', 'Person 2:'). Provide only the final, labeled transcription."
+      const transcriptionPrompt = "You are an expert audio transcriber. The following audio file contains a conversation between two people in a mix of Tamil and English (Tanglish). Your task is to transcribe it into clean, plain English text. Crucially, identify each distinct speaker and label their dialogue (e.g., 'Person 1:', 'Person 2:'). **The final output must be plain text only, without any markdown formatting like asterisks.** Provide only the final, labeled transcription."
       
       const result = await model.generateContent([transcriptionPrompt, audioPart])
       const transcriptionText = result.response.text()
 
       await supabase.from('recordings').update({ transcription: transcriptionText }).eq('id', recording.id)
-      return { role: recording.role, transcription: transcriptionText };
+      return { role: recording.role, transcription: transcriptionText, fileName: recording.file_name };
     });
 
     const transcribedRecordings = await Promise.all(transcriptionPromises);
 
     // Consolidate transcriptions and update the ticket
     const combinedTranscript = transcribedRecordings
-      .map((rec, index) => `Call ${index + 1}: Role: ${rec.role}\nTranscription:\n${rec.transcription}\n\n`)
-      .join('')
-      .trim();
+      .map((rec, index) => {
+        let roleDisplay = rec.role.charAt(0).toUpperCase() + rec.role.slice(1);
+        // console.log(`[FILE DEBUG] Role: "${rec.role}", FileName: "${rec.fileName}"`);
 
+        // Extracting name of manager if it's a manager.
+        if (rec.role && rec.role.toLowerCase().trim() === 'manager' && rec.fileName) {
+          const nameRegex = /^manager_(.+?)_?(0091\d+)/i;
+          const match = rec.fileName.match(nameRegex);
+          
+          // console.log(`
+          //   [MANAGER DEBUG]
+          //   - Filename: ${rec.fileName}
+          //   - Regex Pattern: ${nameRegex}
+          //   - Match Result: ${JSON.stringify(match)}
+          // `);
+
+          if (match && match[1]) {
+            // match[1] contains the captured name, e.g., FirstName_LastName
+            // Replacing underscores with spaces 
+            const managerName = match[1].replace(/_/g, ' ').trim();
+            roleDisplay = `Manager ${managerName}`; // Result: "Manager FirstName LastName"
+          }
+        }
+
+    return `Call ${index + 1}: Role: ${roleDisplay}\nTranscription:\n${rec.transcription}\n\n`;
+  })
+  .join('')
+  .trim();
     console.log(`[DEBUG] Combined transcript is ${combinedTranscript.length} characters long.`);
     if (combinedTranscript.length === 0) {
         throw new Error("Combined transcript is empty, cannot proceed with analysis.");

@@ -97,9 +97,16 @@ serve(async (req) => {
       .join('')
       .trim();
 
+    console.log(`[DEBUG] Combined transcript is ${combinedTranscript.length} characters long.`);
+    if (combinedTranscript.length === 0) {
+        throw new Error("Combined transcript is empty, cannot proceed with analysis.");
+    }
+
     await supabase.from('tickets').update({ 
       transcription: combinedTranscript
     }).eq('id', ticket.id)
+    
+    console.log("[PROGRESS] Transcript saved. Preparing for Gemini analysis call.");
 
     // Analyze the combined transcript to get structured JSON 
     const analysisPrompt = `
@@ -124,6 +131,8 @@ serve(async (req) => {
       """
     `;
 
+    console.log("[SENDING] Attempting to call Gemini for structured analysis...");
+
     const analysisResult = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: analysisPrompt }] }],
       generationConfig: {
@@ -132,8 +141,12 @@ serve(async (req) => {
       },
     });
 
-    const analysisJson = JSON.parse(analysisResult.response.text());
+    const rawResponseText = analysisResult.response.text();
+    console.log("[RESPONSE] Raw analysis response from Gemini:", rawResponseText);
 
+
+    const analysisJson = JSON.parse(analysisResult.response.text());
+    console.log("[RESPONSE PARSED]: ", analysisJson)
     // Loop through the JSON object and convert any string "null" to a real null value.
     Object.keys(analysisJson).forEach(key => {
         if (analysisJson[key] === "null") {
@@ -142,16 +155,23 @@ serve(async (req) => {
     });
 
     // Update the ticket by spreading the cleaned JSON keys into their respective columns.
-    await supabase.from('tickets').update({ 
-      ...analysisJson,
-      status: 'done' 
+    const { error } = await supabase.from('tickets').update({
+      columns_field: analysisJson, 
+      status: 'done'
     }).eq('id', ticket.id)
 
+    if (error) {
+        console.error("Error updating Supabase:", error);
+        throw new Error(`Failed to update ticket in Supabase: ${error.message}`);
+    }
+    console.log(`[SUCCESS] Ticket ${ticket.id} processed and updated successfully.`);
     return new Response(JSON.stringify({ message: `Successfully processed ticket ${ticket.id}` }), { status: 200 })
 
   } catch (error) {
     console.error(`Failed to process ticket ${ticket.id}:`, error)
     await supabase.from('tickets').update({ status: 'failed' }).eq('id', ticket.id)
+    console.error(`[CRITICAL FAILURE] An error occurred while processing ticket ${ticket.id}:`, error);
+
     return new Response(JSON.stringify({ error: error.message }), { status: 500 })
   }
 })

@@ -88,6 +88,7 @@ npm install
     -- Columns to store more details
     ALTER TABLE public.tickets
     ADD COLUMN "Name" text,
+    ADD COLUMN "Branch" text,
     ADD COLUMN "Status" text,
     ADD COLUMN "Status_Other" text,
     ADD COLUMN "Bill_No" text,

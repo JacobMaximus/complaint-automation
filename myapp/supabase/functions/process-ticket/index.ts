@@ -180,6 +180,7 @@ serve(async (req) => {
 
     // Update the ticket by spreading the cleaned JSON keys into their respective columns.
     const { error } = await supabase.from('tickets').update({
+      ...analysisJson,
       columns_field: analysisJson, 
       status: 'done'
     }).eq('id', ticket.id)

@@ -70,26 +70,72 @@ serve(async (req) => {
 
     if (fetchError) throw fetchError;
     if (!recordings || recordings.length === 0) throw new Error(`No recordings found for ticket ${ticket.id}`);
+    
+    const failedFile = recordings.find(rec => rec.file_name.includes('_TESTFAIL_'));    
+    if (failedFile) {
+      console.warn(`[TEST] Detected _TESTFAIL_ keyword in file: ${failedFile.file_name}. Forcing error.`);
+      throw new Error('This is a forced test error to check the failure workflow.');
+    }
 
-    // Transcribe all files in parallel
-    const transcriptionPromises = recordings.map(async (recording) => {
-      const filePath = `${ticket.storage_path}/${recording.file_name}`
-      const { data: audioBlob } = await supabase.storage.from('call-recordings').download(filePath)
+    /// Transcribe all files in parallel
+    // const transcriptionPromises = recordings.map(async (recording) => {
+    //   const filePath = `${ticket.storage_path}/${recording.file_name}`
+    //   const { data: audioBlob } = await supabase.storage.from('call-recordings').download(filePath)
+      
+    //   const audioBytes = await audioBlob.arrayBuffer();
+    //   const base64Audio = encodeBase64(new Uint8Array(audioBytes));
+    //   const audioPart = { inlineData: { data: base64Audio, mimeType: 'audio/opus' } };
+      
+    //   const transcriptionPrompt = "You are an expert audio transcriber. The following audio file contains a conversation between two people in a mix of Tamil and English (Tanglish). Your task is to transcribe it into clean, plain English text. Crucially, identify each distinct speaker and label their dialogue (e.g., 'Person 1:', 'Person 2:'). **The final output must be plain text only, without any markdown formatting like asterisks.** Provide only the final, labeled transcription."
+      
+    //   const result = await model.generateContent([transcriptionPrompt, audioPart])
+    //   const transcriptionText = result.response.text()
+
+    //   await supabase.from('recordings').update({ transcription: transcriptionText }).eq('id', recording.id)
+    //   return { role: recording.role, transcription: transcriptionText, fileName: recording.file_name };
+    // });
+
+    // const transcribedRecordings = await Promise.all(transcriptionPromises);
+
+    // Transcribe all files sequentially 
+    console.log(`[PROGRESS] Starting sequential transcription for ${recordings.length} files...`);
+    const transcribedRecordings = [];
+
+    for (const recording of recordings) {
+      
+      // If a transcription already exists, skip the API call.
+      if (recording.transcription) {
+        console.log(`Skipping file ${recording.file_name}, already transcribed.`);
+        transcribedRecordings.push({ 
+          role: recording.role, 
+          transcription: recording.transcription, 
+          fileName: recording.file_name 
+        });
+        continue; 
+      }
+      
+      console.log(`[PROGRESS] Transcribing new file: ${recording.file_name}`);
+      const filePath = `${ticket.storage_path}/${recording.file_name}`;
+      const { data: audioBlob } = await supabase.storage.from('call-recordings').download(filePath);
       
       const audioBytes = await audioBlob.arrayBuffer();
       const base64Audio = encodeBase64(new Uint8Array(audioBytes));
       const audioPart = { inlineData: { data: base64Audio, mimeType: 'audio/opus' } };
       
-      const transcriptionPrompt = "You are an expert audio transcriber. The following audio file contains a conversation between two people in a mix of Tamil and English (Tanglish). Your task is to transcribe it into clean, plain English text. Crucially, identify each distinct speaker and label their dialogue (e.g., 'Person 1:', 'Person 2:'). **The final output must be plain text only, without any markdown formatting like asterisks.** Provide only the final, labeled transcription."
+      const transcriptionPrompt = "You are an expert audio transcriber. The following audio file contains a conversation between two people in a mix of Tamil and English (Tanglish). Your task is to transcribe it into clean, plain English text. Crucially, identify each distinct speaker and label their dialogue (e.g., 'Person 1:', 'Person 2:'). **The final output must be plain text only, without any markdown formatting like asterisks.** Provide only the final, labeled transcription.";
       
-      const result = await model.generateContent([transcriptionPrompt, audioPart])
-      const transcriptionText = result.response.text()
+      const result = await model.generateContent([transcriptionPrompt, audioPart]);
+      const transcriptionText = result.response.text();
 
-      await supabase.from('recordings').update({ transcription: transcriptionText }).eq('id', recording.id)
-      return { role: recording.role, transcription: transcriptionText, fileName: recording.file_name };
-    });
-
-    const transcribedRecordings = await Promise.all(transcriptionPromises);
+      await supabase.from('recordings').update({ transcription: transcriptionText }).eq('id', recording.id);
+      
+      transcribedRecordings.push({ 
+        role: recording.role, 
+        transcription: transcriptionText, 
+        fileName: recording.file_name 
+      });
+      console.log(`[PROGRESS] Finished file: ${recording.file_name}`);
+    }
 
     // Consolidate transcriptions and update the ticket
     const combinedTranscript = transcribedRecordings
@@ -192,11 +238,21 @@ serve(async (req) => {
     console.log(`[SUCCESS] Ticket ${ticket.id} processed and updated successfully.`);
     return new Response(JSON.stringify({ message: `Successfully processed ticket ${ticket.id}` }), { status: 200 })
 
-  } catch (error) {
+} catch (error) {
+    const errorMessage = error.message || 'An unknown error occurred';
     console.error(`Failed to process ticket ${ticket.id}:`, error)
-    await supabase.from('tickets').update({ status: 'failed' }).eq('id', ticket.id)
-    console.error(`[CRITICAL FAILURE] An error occurred while processing ticket ${ticket.id}:`, error);
+    
+    await supabase.from('tickets').update({ 
+      status: 'failed'
+    }).eq('id', ticket.id)
 
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 })
-  }
+    await supabase.from('ticket_errors').insert({
+        ticket_id: ticket.id,
+        error_message: errorMessage
+    });
+
+  console.error(`[CRITICAL FAILURE] An error occurred while processing ticket ${ticket.id}:`, error);
+
+   return new Response(JSON.stringify({ message: "Function executed, processing failed.", error: errorMessage }), { status: 200 })
+}
 })

@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import TicketItem from '../components/TicketItem'; 
+import TicketItem from '../components/TicketItem';
 
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -49,10 +49,12 @@ export default function TicketsScreen() {
             // return the original object reference. React will see it's
             // the same object and skip re-rendering that row.
             if (existingTicket && existingTicket.status === newTicket.status) {
+              if (newTicket.status === 'failed' || newTicket.status === 'processing') {
+                return newTicket; 
+              }
               return existingTicket;
             }
 
-            // Otherwise, return the new, updated ticket object.
             return newTicket;
           });
 

@@ -2,10 +2,10 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-
+import AntDesign from '@expo/vector-icons/AntDesign';
+import Entypo from '@expo/vector-icons/Entypo';
 export default function TabLayout() {
   const colorScheme = useColorScheme();
 
@@ -19,17 +19,24 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'Process Ticket',
+          tabBarIcon: ({ color }) => <Entypo name="upload" size={24} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="TicketsScreen"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Tickets',
+          tabBarIcon: ({ color }) => <AntDesign name="carry-out" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="googlesheets"
+        options={{
+          href: null, 
         }}
       />
     </Tabs>
+    
   );
 }

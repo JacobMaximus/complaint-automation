@@ -126,6 +126,35 @@ npm install
 
 5.  **Create Storage Bucket**: Navigate to **Storage** in the Supabase dashboard and create a **new public bucket** named `call-recordings`.
 
+6.  **Enable Database Extensions and RLS Policies**: Execute the entire query below in the SQL Editor.
+
+      * The `http` extension is required for the triggers to call Edge Functions.
+      * The RLS policies are required for the Expo app to read data from the tables.
+
+
+    ```sql
+    -- 1. Enable the HTTP extension to allow triggers to make web requests
+    create extension if not exists http with schema extensions;
+
+    -- 2. Enable RLS on the tables
+    ALTER TABLE public.tickets ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE public.recordings ENABLE ROW LEVEL SECURITY;
+
+    -- 3. Create a read-only policy for the 'tickets' table
+    CREATE POLICY "Allow public read-only access on tickets"
+    ON public.tickets
+    FOR SELECT
+    TO anon, authenticated
+    USING (true);
+
+    -- 4. Create a read-only policy for the 'recordings' table
+    CREATE POLICY "Allow public read-only access on recordings"
+    ON public.recordings
+    FOR SELECT
+    TO anon, authenticated
+    USING (true);
+    ```
+
 
 ### 4. Configure Secrets
 

@@ -127,6 +127,8 @@ serve(async (req) => {
       const result = await model.generateContent([transcriptionPrompt, audioPart]);
       const transcriptionText = result.response.text();
 
+      console.log(`[TRANSCRIPTION for ${recording.file_name}]:\n`, transcriptionText);
+      
       await supabase.from('recordings').update({ transcription: transcriptionText }).eq('id', recording.id);
       
       transcribedRecordings.push({ 

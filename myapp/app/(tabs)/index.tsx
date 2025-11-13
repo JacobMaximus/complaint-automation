@@ -98,68 +98,96 @@ export default function App() {
   };
 
 
-  // SEPARATE useEffect TO HANDLE SHARED FILES ---
-useEffect(() => {
-  if (shareIntent?.files && shareIntent.files.length > 0) {
-    const filesToProcess = shareIntent.files;
+  //  useEffect TO HANDLE SHARED FILES
+  useEffect(() => {
+    if (shareIntent?.files && shareIntent.files.length > 0) {
+      const filesToProcess = shareIntent.files;
 
-    const processSharedFiles = async () => {
-      try {
-        const newFiles: AppFile[] = await Promise.all(
-          filesToProcess.map(async (file): Promise<AppFile> => {
-            const uri = file.path;
-            let metadata: FileSystem.FileInfo | null = null;
-            try {
-              metadata = await FileSystem.getInfoAsync(uri);
-            } catch (e) {
-              console.warn(`Could not get file info for ${uri}:`, e);
-            }
+      const processSharedFiles = async () => {
+        try {
+          const newFiles: AppFile[] = await Promise.all(
+            filesToProcess.map(async (file): Promise<AppFile> => {
+              const uri = file.path;
+              const fileName = file.fileName || 'Shared File';
+              
+              // Try to get system metadata (as a fallback for size/existence)
+              let metadata: FileSystem.FileInfo | null = null;
+              try {
+                metadata = await FileSystem.getInfoAsync(uri);
+              } catch (e) {
+                console.warn(`Could not get file info for ${uri}:`, e);
+              }
 
-            
-            let size: number | undefined = undefined;
-            let lastModified: number = Date.now();
+              let size: number | undefined = undefined;
+              if (metadata && metadata.exists) {
+                size = metadata.size;
+              }
 
-            if (metadata && metadata.exists) {
-              size = metadata.size;
-              lastModified = metadata.modificationTime! * 1000;
-            } else if (metadata && metadata.exists) {
-              lastModified = metadata.modificationTime! * 1000;
-            }
+              // DETERMINE LAST MODIFIED TIME
+              // Priority: 1. Filename Parse -> 2. System Metadata -> 3. Date.now()
+              let lastModified: number = Date.now();
+              let dateFoundInFilename = false;
+
+              // REGEX: Look for underscore followed by exactly 14 digits
+              // Example: ..._20251002224417.mp3
+              const dateRegex = /_(\d{14})/;
+              const match = fileName.match(dateRegex);
+
+              if (match && match[1]) {
+                const timeStr = match[1];
+                const year = parseInt(timeStr.substring(0, 4), 10);
+                const month = parseInt(timeStr.substring(4, 6), 10) - 1; 
+                const day = parseInt(timeStr.substring(6, 8), 10);
+                const hour = parseInt(timeStr.substring(8, 10), 10);
+                const minute = parseInt(timeStr.substring(10, 12), 10);
+                const second = parseInt(timeStr.substring(12, 14), 10);
+
+                const parsedDate = new Date(year, month, day, hour, minute, second);
+                
+                if (!isNaN(parsedDate.getTime())) {
+                  lastModified = parsedDate.getTime();
+                  dateFoundInFilename = true;
+                  console.log(`Parsed time from filename ${fileName}: ${parsedDate.toLocaleString()}`);
+                }
+              }
+
+              // If filename parsing failed, try system metadata
+              if (!dateFoundInFilename && metadata && metadata.exists && metadata.modificationTime) {
+                 lastModified = metadata.modificationTime * 1000;
+              }
 
               const asset: ExtendedAsset = {
                 uri: uri,
-                name: file.fileName || 'Shared File', 
+                name: fileName,
                 mimeType: file.mimeType || 'audio/*',
                 size: size,
                 lastModified: lastModified,
               };
 
-            return {
-              asset: asset,
-              role: 'Customer'
-            };
-          })
-        );
+              return {
+                asset: asset,
+                role: 'Customer'
+              };
+            })
+          );
 
-        // Add files to the existing list (if any)
-        // Sort and de-duplicates automatically
-        addFilesToState(newFiles); 
+          addFilesToState(newFiles);
 
-        // Moves to the ticket screen if not already there
-        setAppState('ticket');
+          // Moves to the ticket screen if not already there
+          setAppState('ticket');
 
-        // Clear the intent so it's not processed again
-        resetShareIntent(); 
+          // Clear the intent so it's not processed again
+          resetShareIntent();
 
-      } catch (error: any) {
-        console.error('Failed to process shared files:', error);
-        Alert.alert('Error', 'Failed to process shared files: ' + error.message);
-      }
-    };
+        } catch (error: any) {
+          console.error('Failed to process shared files:', error);
+          Alert.alert('Error', 'Failed to process shared files: ' + error.message);
+        }
+      };
 
-    processSharedFiles();
-  }
-}, [shareIntent]); // This effect watches only for shareIntent
+      processSharedFiles();
+    }
+  }, [shareIntent]);
 
   async function handlePlayback(item: AppFile) {
     if (sound) {

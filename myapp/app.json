@@ -18,18 +18,28 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "launchMode": "singleTask",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "intentFilters": [
-        {
-          "action": "SEND",
-          "category": [
-            "DEFAULT"
-          ],
-          "data": {
-            "mimeType": "audio/*"
-          }
+      {
+        "action": "SEND",
+        "category": [
+          "DEFAULT"
+        ],
+        "data": {
+          "mimeType": "audio/*"
         }
+      },
+      {
+        "action": "SEND_MULTIPLE",
+        "category": [
+          "DEFAULT"
+        ],
+        "data": {
+          "mimeType": "audio/*"
+        }
+      }
       ],
       "permissions": [
         "android.permission.RECORD_AUDIO",

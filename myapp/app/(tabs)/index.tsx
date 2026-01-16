@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { Audio } from 'expo-av';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system'; 
+import * as Linking from 'expo-linking'; 
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,7 +17,7 @@ import {
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import 'react-native-url-polyfill/auto';
-
+import { useShareIntent } from 'expo-share-intent';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
@@ -33,8 +35,16 @@ type FileRole = 'Customer' | 'Manager' | 'Other';
 type AppState = 'home' | 'ticket'
 
 
-type ExtendedAsset = DocumentPicker.DocumentPickerAsset & {
-  lastModified?: number;
+// type ExtendedAsset = DocumentPicker.DocumentPickerAsset & {
+//   lastModified?: number;
+// };
+
+type ExtendedAsset = {
+  uri: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+  lastModified?: number; 
 };
 
 type AppFile = {
@@ -50,6 +60,134 @@ export default function App() {
 
   const [sound, setSound] = useState<Audio.Sound | null>(null)
   const [currentlyPlayingUri, setCurrentlyPlayingUri] = useState<string | null>(null)
+
+ 
+
+ const { shareIntent, resetShareIntent } = useShareIntent();
+
+  // Helper function to add files, sort, and deduplicate
+  const addFilesToState = (newFiles: AppFile[]) => {
+    setSelectedFiles((currentFiles) => {
+      const allFiles = [...currentFiles, ...newFiles];
+      const uniqueFiles = Array.from(
+        new Map(allFiles.map((file) => [file.asset.uri, file])).values()
+      );
+
+      // AUTOMATIC SORTING LOGIC 
+      uniqueFiles.sort(
+        (a, b) => (a.asset.lastModified || 0) - (b.asset.lastModified || 0)
+      );
+
+      console.log('--- Sorted File Timestamps ---');
+      uniqueFiles.forEach((file) => {
+        if (typeof file.asset.lastModified === 'number') {
+          const modDate = new Date(file.asset.lastModified);
+          console.log(
+            `File: ${
+              file.asset.name
+            }, Last Modified: ${modDate.toLocaleString('en-IN')}`
+          );
+        } else {
+          console.log(`File: ${file.asset.name}, Last Modified: N/A`);
+        }
+      });
+      console.log('-----------------------------');
+
+      return uniqueFiles;
+    });
+  };
+
+
+  //  useEffect TO HANDLE SHARED FILES
+  useEffect(() => {
+    if (shareIntent?.files && shareIntent.files.length > 0) {
+      const filesToProcess = shareIntent.files;
+
+      const processSharedFiles = async () => {
+        try {
+          const newFiles: AppFile[] = await Promise.all(
+            filesToProcess.map(async (file): Promise<AppFile> => {
+              const uri = file.path;
+              const fileName = file.fileName || 'Shared File';
+              
+              // Try to get system metadata (as a fallback for size/existence)
+              let metadata: FileSystem.FileInfo | null = null;
+              try {
+                metadata = await FileSystem.getInfoAsync(uri);
+              } catch (e) {
+                console.warn(`Could not get file info for ${uri}:`, e);
+              }
+
+              let size: number | undefined = undefined;
+              if (metadata && metadata.exists) {
+                size = metadata.size;
+              }
+
+              // DETERMINE LAST MODIFIED TIME
+              // Priority: 1. Filename Parse -> 2. System Metadata -> 3. Date.now()
+              let lastModified: number = Date.now();
+              let dateFoundInFilename = false;
+
+              // REGEX: Look for underscore followed by exactly 14 digits
+              // Example: ..._20251002224417.mp3
+              const dateRegex = /_(\d{14})/;
+              const match = fileName.match(dateRegex);
+
+              if (match && match[1]) {
+                const timeStr = match[1];
+                const year = parseInt(timeStr.substring(0, 4), 10);
+                const month = parseInt(timeStr.substring(4, 6), 10) - 1; 
+                const day = parseInt(timeStr.substring(6, 8), 10);
+                const hour = parseInt(timeStr.substring(8, 10), 10);
+                const minute = parseInt(timeStr.substring(10, 12), 10);
+                const second = parseInt(timeStr.substring(12, 14), 10);
+
+                const parsedDate = new Date(year, month, day, hour, minute, second);
+                
+                if (!isNaN(parsedDate.getTime())) {
+                  lastModified = parsedDate.getTime();
+                  dateFoundInFilename = true;
+                  console.log(`Parsed time from filename ${fileName}: ${parsedDate.toLocaleString()}`);
+                }
+              }
+
+              // If filename parsing failed, try system metadata
+              if (!dateFoundInFilename && metadata && metadata.exists && metadata.modificationTime) {
+                 lastModified = metadata.modificationTime * 1000;
+              }
+
+              const asset: ExtendedAsset = {
+                uri: uri,
+                name: fileName,
+                mimeType: file.mimeType || 'audio/*',
+                size: size,
+                lastModified: lastModified,
+              };
+
+              return {
+                asset: asset,
+                role: 'Customer'
+              };
+            })
+          );
+
+          addFilesToState(newFiles);
+
+          // Moves to the ticket screen if not already there
+          setAppState('ticket');
+
+          // Clear the intent so it's not processed again
+          resetShareIntent();
+
+        } catch (error: any) {
+          console.error('Failed to process shared files:', error);
+          Alert.alert('Error', 'Failed to process shared files: ' + error.message);
+        }
+      };
+
+      processSharedFiles();
+    }
+  }, [shareIntent]);
 
   async function handlePlayback(item: AppFile) {
     if (sound) {
